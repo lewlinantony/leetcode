@@ -8,11 +8,11 @@ const widgetHeight = 125;
 const widgetLeft = 15;
 const widgetTop = 335; // Position below GitHub widget
 
-// Refresh every 4 hours to avoid rate limits
+// Refresh every 1 hours to avoid rate limits
 export const refreshFrequency = 3600000;
 
 // --- API Configuration ---
-const leetcodeUsername = ""; // <-- Set your LeetCode username here before use
+const leetcodeUsername = "username"; // <-- Set your LeetCode username here before use
 const API_BASE = 'https://leetcode-stats-api.herokuapp.com';
 
 // --- Transform LeetCode calendar data to match our format ---
