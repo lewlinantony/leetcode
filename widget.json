@@ -1,0 +1,10 @@
+{
+  "name": "LeetCode Activity Widget",
+  "description": "A sleek Übersicht widget that displays your LeetCode submission calendar and current streak with a clean contribution graph design",
+  "author": "noob_master__69",
+  "email": "",
+  "version": "1.0.0",
+  "tags": ["leetcode", "coding", "calendar", "streak", "activity", "submissions"],
+  "screenshot": "screenshot.png",
+  "compatibleWith": "1.4.0"
+}
