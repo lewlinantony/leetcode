@@ -1,31 +1,78 @@
 // LeetCode Widget for Übersicht
-// Displays LeetCode submission streak and calendar for a given user.
-// Set your LeetCode username below before use.
+// Displays LeetCode submission streak and calendar for a given user
+// 
+// SETUP INSTRUCTIONS:
+// 1. Set your LeetCode username in the configuration section below
+// 2. Optionally adjust widget position and timezone settings
+// 3. Save this file as 'leetcode.jsx' in your Übersicht widgets folder
 
-// Widget dimensions
-const widgetWidth = 317;
-const widgetHeight = 125;
-const widgetLeft = 15;
-const widgetTop = 335; // Position below GitHub widget
+// =============================================================================
+// CONFIGURATION - EDIT THESE VALUES
+// =============================================================================
 
-// Refresh every 1 hours to avoid rate limits
-export const refreshFrequency = 3600000;
+// Your LeetCode username (REQUIRED - replace with your actual username)
+const LEETCODE_USERNAME = "your_username_here"; // <-- CHANGE THIS
 
-// --- API Configuration ---
-const leetcodeUsername = "username"; // <-- Set your LeetCode username here before use
+// Widget position on screen
+const WIDGET_POSITION = {
+  left: 15,    // Distance from left edge of screen
+  top: 335,    // Distance from top of screen
+  width: 317,  // Widget width
+  height: 125  // Widget height
+};
+
+// Timezone settings (IST = Indian Standard Time, UTC+5:30)
+// Change this if you want to use a different timezone for midnight reset
+const TIMEZONE_OFFSET_HOURS = 5.5; // IST offset from UTC
+
+// Refresh interval (in milliseconds)
+// 3600000 = 1 hour (recommended to avoid rate limits)
+const REFRESH_INTERVAL = 3600000;
+
+// =============================================================================
+// WIDGET CODE - NO NEED TO EDIT BELOW THIS LINE
+// =============================================================================
+
+export const refreshFrequency = REFRESH_INTERVAL;
+
+// API Configuration
 const API_BASE = 'https://leetcode-stats-api.herokuapp.com';
 
-// --- Transform LeetCode calendar data to match our format ---
+// Validate username
+if (LEETCODE_USERNAME === "your_username_here" || !LEETCODE_USERNAME) {
+  console.error("❌ LeetCode Widget: Please set your username in LEETCODE_USERNAME");
+}
+
+// --- Timezone Functions ---
+const getCurrentDateInTimezone = () => {
+  const now = new Date();
+  const offsetMs = TIMEZONE_OFFSET_HOURS * 60 * 60 * 1000;
+  const timezoneTime = new Date(now.getTime() + offsetMs);
+  console.log(`📅 Current time (UTC+${TIMEZONE_OFFSET_HOURS}):`, timezoneTime.toISOString());
+  return timezoneTime;
+};
+
+const getStartOfDay = (date) => {
+  const startOfDay = new Date(date);
+  startOfDay.setHours(0, 0, 0, 0);
+  return startOfDay;
+};
+
+// --- Transform LeetCode calendar data ---
 const transformCalendarData = (submissionCalendar) => {
   const weeks = [];
-  const now = new Date();
+  const now = getCurrentDateInTimezone();
   
-  // Calculate the start date (52 weeks ago from current week's Sunday)
+  // Calculate 52 weeks of data ending with current week
   const currentSunday = new Date(now);
-  currentSunday.setDate(now.getDate() - now.getDay()); // Go to this week's Sunday
+  currentSunday.setDate(now.getDate() - now.getDay());
   
   const startSunday = new Date(currentSunday);
-  startSunday.setDate(currentSunday.getDate() - (51 * 7)); // Go back 51 weeks (52 weeks total including current)
+  startSunday.setDate(currentSunday.getDate() - (51 * 7));
+  
+  // Get today's date string
+  const today = getStartOfDay(now);
+  const todayDateStr = today.toISOString().split('T')[0];
   
   for (let weekIndex = 0; weekIndex < 52; weekIndex++) {
     const week = { contributionDays: [] };
@@ -34,21 +81,23 @@ const transformCalendarData = (submissionCalendar) => {
       const currentDate = new Date(startSunday);
       currentDate.setDate(startSunday.getDate() + (weekIndex * 7) + dayIndex);
       
-      // Only add days up to today (no future dates)
+      // Only include dates up to today
       if (currentDate <= now) {
-        // Create date at start of day (midnight UTC)
         const dateAtMidnight = new Date(currentDate);
         dateAtMidnight.setUTCHours(0, 0, 0, 0);
         const timestamp = Math.floor(dateAtMidnight.getTime() / 1000).toString();
+        
+        const currentDateStr = currentDate.toISOString().split('T')[0];
+        const isToday = currentDateStr === todayDateStr;
         const submissionCount = submissionCalendar[timestamp] || 0;
         
         week.contributionDays.push({
-          date: currentDate.toISOString().split('T')[0],
+          date: currentDateStr,
           count: submissionCount,
-          timestamp: timestamp
+          timestamp: timestamp,
+          isToday: isToday
         });
       }
-      // Don't add anything for future dates - they simply won't exist
     }
     weeks.push(week);
   }
@@ -56,67 +105,60 @@ const transformCalendarData = (submissionCalendar) => {
   return weeks;
 };
 
-// --- Utility: Map submission count to colors ---
-const getColor = (count) => {
-  if (count === 0) return "#1a1a1a";
-  else if (count === 1) return "#0e4429";
-  else if (count === 2) return "#006d32";
-  else if (count >= 3) return "#26a641";
+// --- Color mapping for submission counts ---
+const getSubmissionColor = (count, isToday = false) => {
+  if (count === 0) return isToday ? "#2a2a2a" : "#1a1a1a";
+  if (count === 1) return "#0e4429";
+  if (count === 2) return "#006d32";
+  if (count >= 3) return "#26a641";
   return "#39d353";
 };
 
-// --- Generate submission calendar SVG ---
+// --- Generate calendar SVG ---
 const generateCalendarSVG = (submissions) => {
   const cellSize = 8;
   const cellMargin = 1.5;
   const cornerRadius = 1.5;
-  const availableGridWidth = widgetWidth - 16;
+  const availableWidth = WIDGET_POSITION.width - 16;
   const weekWidth = cellSize + cellMargin;
-  const weeksToShow = Math.floor(availableGridWidth / weekWidth);
+  const weeksToShow = Math.floor(availableWidth / weekWidth);
   const displayWeeks = submissions.slice(-weeksToShow);
-  const xOffset = 1;
-  const yOffset = 5;
-
-  const gridWidth = weeksToShow * weekWidth - cellMargin + Math.abs(xOffset);
-  const gridHeight = 7 * (cellSize + cellMargin) - cellMargin + Math.abs(yOffset);
+  
+  const gridWidth = weeksToShow * weekWidth - cellMargin + 1;
+  const gridHeight = 7 * (cellSize + cellMargin) - cellMargin + 5;
 
   let svgCells = "";
 
   displayWeeks.forEach((week, weekIndex) => {
     week.contributionDays.forEach((day, dayIndex) => {
-      const x = weekIndex * weekWidth + xOffset;
-      const y = dayIndex * (cellSize + cellMargin) + yOffset;
-      const fill = getColor(day.count);
+      const x = weekIndex * weekWidth + 1;
+      const y = dayIndex * (cellSize + cellMargin) + 5;
+      const fill = getSubmissionColor(day.count, day.isToday);
+      const stroke = day.isToday ? "#555" : "none";
+      const strokeWidth = day.isToday ? "0.5" : "0";
+      
       svgCells += `
         <rect 
-          x="${x}" 
-          y="${y}" 
-          width="${cellSize}" 
-          height="${cellSize}" 
-          fill="${fill}" 
-          rx="${cornerRadius}" 
-          ry="${cornerRadius}"
+          x="${x}" y="${y}" 
+          width="${cellSize}" height="${cellSize}" 
+          fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}"
+          rx="${cornerRadius}" ry="${cornerRadius}"
         />`;
     });
   });
 
-  return `
-    <svg width="${gridWidth}" height="${gridHeight}" xmlns="http://www.w3.org/2000/svg">
-      ${svgCells}
-    </svg>`;
+  return `<svg width="${gridWidth}" height="${gridHeight}" xmlns="http://www.w3.org/2000/svg">${svgCells}</svg>`;
 };
 
-// --- Calculate statistics ---
-const calculateStats = (weeks, originalSubmissionCalendar) => {
-  let maxStreak = 0;
-  let currentStreak = 0;
-
-  // Flatten all days from weeks and sort by date
+// --- Calculate streak statistics ---
+const calculateStreaks = (weeks, originalSubmissionCalendar) => {
+  // Calculate max streak
   const allDays = weeks.flatMap(week => week.contributionDays)
     .sort((a, b) => new Date(a.date) - new Date(b.date));
 
-  // Calculate max streak
+  let maxStreak = 0;
   let tempStreak = 0;
+  
   for (const day of allDays) {
     if (day.count > 0) {
       tempStreak++;
@@ -126,54 +168,38 @@ const calculateStats = (weeks, originalSubmissionCalendar) => {
     }
   }
   
-  // For current streak, use the original timestamp data for more accuracy
-  // Convert timestamps to dates and sort them
+  // Calculate current streak
   const submissionDates = Object.keys(originalSubmissionCalendar)
-    .map(timestamp => {
-      const date = new Date(parseInt(timestamp) * 1000);
-      return {
-        date: date,
-        dateStr: date.toISOString().split('T')[0],
-        count: originalSubmissionCalendar[timestamp]
-      };
-    })
+    .map(timestamp => ({
+      date: new Date(parseInt(timestamp) * 1000),
+      count: originalSubmissionCalendar[timestamp]
+    }))
     .filter(entry => entry.count > 0)
-    .sort((a, b) => b.date - a.date); // Sort by date descending (newest first)
+    .sort((a, b) => b.date - a.date);
 
-  // Calculate current streak from the most recent submission date
-  if (submissionDates.length === 0) {
-    currentStreak = 0;
-  } else {
-    const today = new Date();
-    today.setHours(23, 59, 59, 999); // End of today
+  let currentStreak = 0;
+  if (submissionDates.length > 0) {
+    const today = getCurrentDateInTimezone();
+    today.setHours(23, 59, 59, 999);
     
-    currentStreak = 0;
-    let checkDate = new Date(submissionDates[0].date);
-    
-    // Start from the most recent submission date and count backwards
     for (let i = 0; i < submissionDates.length; i++) {
-      const currentSubmissionDate = submissionDates[i].date;
+      const currentDate = submissionDates[i].date;
       
-      // Check if this date is consecutive with the previous date (or is today for first iteration)
       if (i === 0) {
-        // First date - check if it's today or yesterday (allowing for some flexibility)
-        const daysDiff = Math.floor((today - currentSubmissionDate) / (1000 * 60 * 60 * 24));
-        if (daysDiff <= 1) { // Today or yesterday
+        const daysDiff = Math.floor((today - currentDate) / (1000 * 60 * 60 * 24));
+        if (daysDiff <= 1) {
           currentStreak = 1;
-          checkDate = new Date(currentSubmissionDate);
         } else {
           break;
         }
       } else {
-        // Check if this date is consecutive with the previous date
         const prevDate = submissionDates[i - 1].date;
-        const daysDiff = Math.floor((prevDate - currentSubmissionDate) / (1000 * 60 * 60 * 24));
+        const daysDiff = Math.floor((prevDate - currentDate) / (1000 * 60 * 60 * 24));
         
-        if (daysDiff === 1) { // Consecutive day
+        if (daysDiff === 1) {
           currentStreak++;
-          checkDate = new Date(currentSubmissionDate);
         } else {
-          break; // Break the streak
+          break;
         }
       }
     }
@@ -182,36 +208,48 @@ const calculateStats = (weeks, originalSubmissionCalendar) => {
   return { maxStreak, currentStreak };
 };
 
-// --- Fetch real LeetCode data ---
+// --- API Data Fetching ---
 export const command = async (dispatch) => {
-  try {
-    // Fetch user data from herokuapp API
-    const userResponse = await fetch(`${API_BASE}/${leetcodeUsername}`);
+  // Check if username is configured
+  if (LEETCODE_USERNAME === "your_username_here" || !LEETCODE_USERNAME) {
+    dispatch({
+      type: "SET_ERROR",
+      error: "Please set your LeetCode username in the widget configuration"
+    });
+    return;
+  }
 
-    if (!userResponse.ok) {
-      if (userResponse.status === 429) {
-        throw new Error('Rate limit exceeded. Data will refresh in a few hours.');
+  try {
+    console.log(`🚀 Fetching LeetCode data for: ${LEETCODE_USERNAME}`);
+    
+    const response = await fetch(`${API_BASE}/${LEETCODE_USERNAME}`);
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error(`User '${LEETCODE_USERNAME}' not found. Please check your username.`);
       }
-      throw new Error(`API failed: ${userResponse.status} ${userResponse.statusText}`);
+      if (response.status === 429) {
+        throw new Error('Rate limit exceeded. Will retry in next refresh cycle.');
+      }
+      throw new Error(`API Error: ${response.status} ${response.statusText}`);
     }
 
-    const userData = await userResponse.json();
-
-    // The herokuapp API structure is different - it has submissionCalendar directly
+    const userData = await response.json();
+    
+    // Parse submission calendar
     let submissionCalendar = {};
     if (userData.submissionCalendar) {
-      if (typeof userData.submissionCalendar === 'string') {
-        submissionCalendar = JSON.parse(userData.submissionCalendar);
-      } else {
-        submissionCalendar = userData.submissionCalendar;
-      }
+      submissionCalendar = typeof userData.submissionCalendar === 'string' 
+        ? JSON.parse(userData.submissionCalendar)
+        : userData.submissionCalendar;
     }
 
-    // Transform calendar data to match our format
+    // Process data
     const recentSubmissions = transformCalendarData(submissionCalendar);
-    
     const calendarSVG = generateCalendarSVG(recentSubmissions);
-    const stats = calculateStats(recentSubmissions, submissionCalendar);
+    const stats = calculateStreaks(recentSubmissions, submissionCalendar);
+    
+    console.log(`✅ LeetCode data loaded - Current streak: ${stats.currentStreak}, Max streak: ${stats.maxStreak}`);
     
     dispatch({ 
       type: "SET_DATA", 
@@ -219,11 +257,14 @@ export const command = async (dispatch) => {
         recentSubmissions,
         calendarSVG,
         stats,
-        error: null
+        error: null,
+        loading: false,
+        username: LEETCODE_USERNAME
       }
     });
     
   } catch (error) {
+    console.error('❌ LeetCode API error:', error.message);
     dispatch({
       type: "SET_ERROR",
       error: error.message
@@ -231,27 +272,28 @@ export const command = async (dispatch) => {
   }
 };
 
+// --- State Management ---
 export const initialState = { 
   data: {
     calendarSVG: "",
     stats: { maxStreak: 0, currentStreak: 0 },
-    error: null
+    error: null,
+    loading: true,
+    username: LEETCODE_USERNAME
   }
 };
 
 export const updateState = (event, previousState) => {
   switch (event.type) {
     case "SET_DATA":
-      return { 
-        ...previousState, 
-        data: event.data
-      };
+      return { ...previousState, data: event.data };
     case "SET_ERROR":
       return {
         ...previousState,
         data: {
           ...previousState.data,
-          error: event.error
+          error: event.error,
+          loading: false
         }
       };
     default:
@@ -264,10 +306,10 @@ import { css } from "uebersicht";
 
 const container = css`
   position: absolute;
-  left: ${widgetLeft}px;
-  top: ${widgetTop}px;
-  width: ${widgetWidth}px;
-  height: ${widgetHeight}px;
+  left: ${WIDGET_POSITION.left}px;
+  top: ${WIDGET_POSITION.top}px;
+  width: ${WIDGET_POSITION.width}px;
+  height: ${WIDGET_POSITION.height}px;
   padding: 12px;
   background: #1a1a1a;
   border-radius: 12px;
@@ -280,28 +322,26 @@ const container = css`
 const header = css`
   display: flex;
   align-items: center;
+  justify-content: space-between;
   margin-bottom: 12px;
   margin-left: 5px;
 `;
 
 const title = css`
   font-size: 14px;
-  margin-top: 7px;
   color: #fff;
 `;
 
-const topSection = css`
+const username = css`
+  font-size: 10px;
+  color: #666;
+  margin-right: 8px;
+`;
+
+const streakSection = css`
   position: absolute;
   top: 15px;
   right: 12px;
-  text-align: right;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-`;
-
-const streakCount = css`
   text-align: right;
 `;
 
@@ -318,7 +358,7 @@ const streakLabel = css`
   margin-top: 0;
 `;
 
-const submissionSection = css`
+const calendarSection = css`
   margin-top: 8px;
 `;
 
@@ -330,37 +370,50 @@ const calendarContainer = css`
   margin-top: -3px;
 `;
 
-const errorContainer = css`
-  background: #332222;
-  border: 1px solid #664444;
+const messageContainer = css`
   border-radius: 8px;
   padding: 10px;
   margin-top: 8px;
-  color: #ff6666;
   font-size: 12px;
   text-align: center;
 `;
 
+const errorContainer = css`
+  ${messageContainer}
+  background: #332222;
+  border: 1px solid #664444;
+  color: #ff6666;
+`;
+
+const loadingContainer = css`
+  ${messageContainer}
+  background: #262626;
+  color: #999;
+`;
+
 // --- Render Widget ---
 export const render = ({ data }) => {
-  const { calendarSVG, stats, error } = data;
+  const { calendarSVG, stats, error, loading, username } = data;
 
   return (
     <div className={container}>
       <div className={header}>
         <div className={title}>LeetCode</div>
+        {username && username !== "your_username_here" && (
+          <div className={username}>@{username}</div>
+        )}
       </div>
-      <div className={topSection}>
-        <div className={streakCount}>
-          <div className={streakNumber}>{stats.currentStreak}</div>
-          <div className={streakLabel}>streak</div>
-        </div>
+      
+      <div className={streakSection}>
+        <div className={streakNumber}>{stats.currentStreak}</div>
+        <div className={streakLabel}>streak</div>
       </div>
-      <div className={submissionSection}>
-        {error ? (
-          <div className={errorContainer}>
-            Failed to load data: {error}
-          </div>
+      
+      <div className={calendarSection}>
+        {loading ? (
+          <div className={loadingContainer}>Loading...</div>
+        ) : error ? (
+          <div className={errorContainer}>{error}</div>
         ) : (
           <div className={calendarContainer}>
             <div dangerouslySetInnerHTML={{ __html: calendarSVG }} />
